@@ -1,4 +1,5 @@
 use io::Result;
+use rusqlite::{params, Connection};
 use std::{fs, io};
 use tiny_http::{Header, Method, Request, Response, Server};
 
@@ -6,7 +7,22 @@ fn main() {
     serve();
 }
 
+fn get_con() -> Connection {
+    Connection::open("main.db").expect("To open an SQLite connection")
+}
+
 fn serve() {
+    let conn = get_con();
+    conn.execute(
+        "create table if not exists recipes (
+             id integer primary key,
+             name text not null unique,
+             ingredients text
+         )",
+        (),
+    )
+    .expect("To create a table");
+
     let server = Server::http("127.0.0.1:9898").unwrap();
     println!("http://127.0.0.1:9898");
     loop {
@@ -25,6 +41,7 @@ fn serve() {
             (Method::Get, "/") => landing_page(request),
             (Method::Get, "/search") => search_page(request),
             (Method::Get, "/add") => add_page(request),
+            (Method::Post, "/add") => add_page_post(request),
             _ => serve_bytes(
                 request,
                 "Hello, world!".as_bytes(),
@@ -71,8 +88,53 @@ fn search_page(request: Request) -> Result<()> {
     );
 }
 
+fn add_page_post(mut request: Request) -> Result<()> {
+    let mut content = String::new();
+    request.as_reader().read_to_string(&mut content).unwrap();
+
+    let params = content.split('&').collect::<Vec<&str>>();
+    let mut name: Option<String> = None;
+    let mut ingredients: Option<String>;
+    for param in params {
+        let parts = param.split('=').collect::<Vec<&str>>();
+        let id = parts.first().unwrap();
+        let value = parts.get(1).unwrap();
+        match *id {
+            "name" => {
+                name = Some(value.to_string());
+            }
+            "ingredients" => {
+                ingredients = Some(value.to_string());
+            }
+            _ => {}
+        }
+    }
+
+    //if !name.is_some() {
+    // return 500;
+    //}
+
+    let ingredients_list: Vec<Ingredient> = vec![];
+    //if ingredients.is_some() {
+    //ingredients = ingredients;
+    // split by new line
+    //}
+
+    let _ = Recipe::create(name.unwrap(), ingredients_list);
+
+    serve_bytes(
+        request,
+        include_bytes!("add.html"),
+        "text/html; charset=utf-8",
+    )
+}
+
 fn add_page(request: Request) -> Result<()> {
-    return serve_bytes(request, "add".as_bytes(), "text/html; charset=utf-8");
+    serve_bytes(
+        request,
+        include_bytes!("add.html"),
+        "text/html; charset=utf-8",
+    )
 }
 
 // Returns an array of bytes.
@@ -127,6 +189,24 @@ impl Recipe {
         html = html + "Ingredients: " + ingredients.as_str();
         html += "</div>";
         html.to_string()
+    }
+    fn create(name: String, ingredients: Vec<Ingredient>) -> Recipe {
+        let con = get_con();
+        con.execute(
+            "INSERT INTO recipes (name, ingredients) VALUES (?1, ?2)",
+            (&name, &ingredients.join(",")),
+        )
+        .expect("To write to db");
+        let res: u32 = con
+            .query_row("SELECT id FROM recipes WHERE name = (?1)", [&name], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        Recipe {
+            id: res as usize,
+            name,
+            ingredients,
+        }
     }
 }
 
