@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 rusqlite = "0.29.0"
 tiny_http = "0.12.0"
+urlencoding = "2.1.3"
