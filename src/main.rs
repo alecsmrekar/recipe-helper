@@ -1,6 +1,7 @@
 use io::Result;
 use rusqlite::{named_params, Connection, params};
 use std::{fs, io};
+use std::io::SeekFrom::Start;
 use std::rc::Rc;
 use rusqlite::types::Value;
 use tiny_http::{Header, Method, Request, Response, Server, StatusCode};
@@ -156,11 +157,19 @@ fn get_usize(text: String) -> Option<usize> {
     return Some(id_cast.unwrap());
 }
 
+fn repeat_vars(count: usize) -> String {
+    assert_ne!(count, 0);
+    let mut s = "?,".repeat(count);
+    // Remove trailing comma
+    s.pop();
+    s
+}
+
 fn add_missing_ingredients_to_db(list: Vec<String>) -> Vec<Ingredient> {
     let mut to_create = vec![];
     let mut existing_ids = vec![];
-    for item in list {
-        if let Some(number) = get_usize(item) {
+    for item in list.clone() {
+        if let Some(number) = get_usize(item.clone()) {
             existing_ids.push(number);
         }
         else {
@@ -169,7 +178,36 @@ fn add_missing_ingredients_to_db(list: Vec<String>) -> Vec<Ingredient> {
     }
 
     let con = get_con();
-    for name in to_create {
+    if !to_create.is_empty() {
+        let mut filter = "\"".to_owned();
+        filter += to_create.join(", ").as_str();
+        filter += "\"";
+
+
+        let vars = repeat_vars(to_create.len());
+
+        let sql = format!(
+            // In practice this would probably be better as an `EXISTS` query.
+            "SELECT id, name FROM ingredients WHERE name IN ({})",
+            vars,
+        );
+        let mut stmt = con.prepare(&sql).unwrap();
+        let existing_by_name: Vec<Ingredient> = stmt
+            .query_map(rusqlite::params_from_iter(to_create.clone()), |row| {
+                Ok(Ingredient {
+                    id: row.get(0).unwrap(),
+                    name: row.get(1).unwrap()
+                })
+            }).unwrap().map(|x| x.unwrap()).collect();
+        for item in existing_by_name {
+            existing_ids.push(item.id);
+            to_create.retain(|x| x.clone() != item.name);
+        }
+    }
+
+    let dddd=2;
+
+    for name in to_create.clone() {
         con.execute(
             "INSERT INTO ingredients (name) VALUES (?1)",
             params![name],
@@ -184,25 +222,37 @@ fn add_missing_ingredients_to_db(list: Vec<String>) -> Vec<Ingredient> {
         }).unwrap();
         existing_ids.push(new_id);
     }
-
-    let mut stmt = con
-        .prepare("SELECT id, name from ingredients where id IN ?1;")
-        .unwrap();
-    let mut ints = vec![];
-    for existing_id in existing_ids {
-        ints.push( Value::from(existing_id as i64));
+    let mut strs = vec![];
+    for existing_id in existing_ids.clone() {
+        strs.push(existing_id.to_string())
     }
-    let test = Rc::new(ints);
-    let test2 = Rc::new(ints.iter().as_ref().iter().map(Value::from).collect::<Vec<Value>>());
-    let ingredients = stmt
-        .query_map(params![test2], |row| {
-            Ok(Ingredient {
+
+    let vars = repeat_vars(strs.len());
+    let sql = format!(
+        "SELECT id, name FROM ingredients WHERE id IN ({})",
+        vars,
+    );
+    let mut stmt = con.prepare(&sql).unwrap();
+
+    let res = stmt
+        .query_map(rusqlite::params_from_iter(strs.clone()), |row| {
+            let tttt = Ingredient {
                 id: row.get(0).unwrap(),
                 name: row.get(1).unwrap()
-            })
-        }).unwrap().map(|x| x.unwrap()).collect();
-
-    return ingredients;
+            };
+            return Ok(tttt);
+        }).unwrap();
+    let mut output = vec![];
+    for ii in res {
+        output.push(ii.unwrap());
+    }
+    println!("output len: {}", output.len());
+    println!("existing len: {}", existing_ids.len());
+    println!("strs len: {}", strs.len());
+    println!("strs: {}", strs.join(","));
+    println!("inputs len: {}", list.len());
+    assert!(output.len() == list.len());
+    return output;
 }
 
 fn add_page_post(mut request: Request, recipe: Option<Recipe>) -> Result<()> {
@@ -337,8 +387,26 @@ impl RecipeShort {
     }
 }
 
+fn get_all_ingredients() -> Vec<Ingredient> {
+    let con = get_con();
+    let mut stmt = con
+        .prepare("SELECT id, name from ingredients;")
+        .unwrap();
+    return stmt
+        .query_map([], |row| {
+            Ok(Ingredient {
+                id: row.get(0).unwrap(),
+                name: row.get(1).unwrap()
+            })
+        }).unwrap().map(|x| x.unwrap()).collect();
+}
+
 fn ingredients_select_html() -> String {
-    return "<option value=\"1\">white</option>".to_string();
+    let mut html = "".to_string();
+    for i in get_all_ingredients() {
+        html += format!("<option value=\"{}\">{}</option>", i.id, i.name).as_str();
+    }
+    html
 }
 
 impl Recipe {
@@ -373,7 +441,7 @@ impl Recipe {
             "INSERT INTO recipes (name) VALUES (?1)",
             params![name],
         )
-        .expect("To write to db");
+        .expect("DUPLICATE RECIPE NAME");
         let res: u32 = con
             .query_row("SELECT id FROM recipes WHERE name = (?1)", [&name], |row| {
                 row.get(0)
@@ -382,11 +450,16 @@ impl Recipe {
 
         for i in ingredients.iter().as_ref() {
             con.execute(
-                "INSERT INTO recipe_ingredients (recipe_id, ingredient_id) VALUES (?1 ?2)",
-                params![res, i.id],
-            )
-                .expect("To write to db");
+                "INSERT INTO recipe_ingredients (recipe_id, ingredient_id)
+                 VALUES (:recipe_id, :ingredient_id)",
+                named_params! {
+                    ":recipe_id": res,
+                    ":ingredient_id": i.id,
+                },
+            ).unwrap();
         }
+
+        let ttt=2;
 
         Recipe {
             id: res as usize,
