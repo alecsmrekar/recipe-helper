@@ -13,6 +13,11 @@
             });
         });
     </script>
+    <style>
+        .select2-container {
+            min-width: 200px;
+        }
+    </style>
 </head>
 <body>
 <h1>Recipe Helper</h1>
@@ -32,10 +37,6 @@
         <label>Ingredients
             <select class="form-control" multiple="multiple" id="ingredients" name="ingredients">
                 {ingredients}
-                <!--
-                <option selected="selected">orange</option>
-                <option>white</option>
-                <option selected="selected">purple</option>-->
             </select>
         </label>
     </div>
