@@ -92,6 +92,12 @@ fn serve() {
             add_page_post(request, recipe).expect("Add page POST");
             continue;
         }
+        if *request.method() == Method::Get
+            && (request.url().ends_with(".js") || request.url().ends_with(".css"))
+        {
+            serve_file(request).expect("Serve file");
+            continue;
+        }
         match (request.method(), request.url()) {
             (Method::Get, "/") => landing_page(request),
             (Method::Get, "/search") => search_page(request),
@@ -334,6 +340,17 @@ fn add_page(request: Request, recipe: Option<Recipe>) -> Result<()> {
     )
 }
 
+fn serve_file(request: Request) -> Result<()> {
+    let filename = request
+        .url()
+        .split("/")
+        .last()
+        .expect("Request URL to have a filename");
+    let filepath: String = "src/".to_string() + filename;
+    let bytes = &fs::read(filepath.as_str()).unwrap();
+    serve_bytes(request, bytes, "charset=utf-8")
+}
+
 // Returns an array of bytes.
 fn serve_bytes(request: Request, bytes: &[u8], content_type: &str) -> Result<()> {
     let content_type_header = Header::from_bytes("Content-Type", content_type)
@@ -426,17 +443,19 @@ impl Recipe {
         html.to_string()
     }
     fn render(self) -> String {
-        let mut html = "<div>".to_string();
+        let mut html = "<h3>".to_string();
         html += self.name.as_str();
-        html += "</div>";
+        html += "</h3><ul>";
         let ingredients = self
             .ingredients
             .iter()
             .by_ref()
-            .map(|i| i.name.clone())
+            .map(|i| {
+                return format!("<li>{}</li>", i.name.clone());
+            })
             .collect::<Vec<String>>()
-            .join(", ");
-        html = html + "Ingredients: " + ingredients.as_str();
+            .join("");
+        html = html + "</ul>" + ingredients.as_str();
         html += "</div>";
         html.to_string()
     }
