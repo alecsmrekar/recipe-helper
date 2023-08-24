@@ -97,6 +97,7 @@ fn serve() {
         match (request.method(), request.url()) {
             (Method::Get, "/") => landing_page(request),
             (Method::Get, "/search") => search_page(request),
+            (Method::Post, "/search") => search_page_post(request),
             (Method::Get, "/add") => add_page(request, None),
             (Method::Post, "/add") => add_page_post(request, None),
             _ => serve_bytes(
@@ -129,6 +130,51 @@ fn landing_page(request: Request) -> Result<()> {
     )
 }
 
+fn search_page_post(mut request: Request) -> Result<()> {
+    let mut content = String::new();
+    request.as_reader().read_to_string(&mut content).unwrap();
+
+    let params = content.split('&').collect::<Vec<&str>>();
+    let mut ingredients: Vec<String> = vec![];
+    for param in params {
+        let parts = param.split('=').collect::<Vec<&str>>();
+        let id = parts.first().unwrap();
+        if *id == "ingredients" {
+            let value = parts.get(1).unwrap();
+            ingredients.push(value.to_string());
+        }
+    }
+    if ingredients.is_empty() {
+        return_redirect("/search".to_string(), request).unwrap();
+        return Ok(());
+    }
+
+    let mut placeholder_page: String = fs::read_to_string("src/search.html")
+        .unwrap()
+        .parse()
+        .unwrap();
+    let mut recipe_html = String::new();
+
+    let recipes = get_filtered_recipes(ingredients.clone());
+
+    for recipe in recipes {
+        recipe_html += recipe.render_link().as_str();
+    }
+
+    placeholder_page = placeholder_page.replace(
+        "{ingredients}",
+        ingredients_select_html_by_ing(Some(ingredients)).as_str(),
+    );
+
+    placeholder_page = placeholder_page.replace("*PLACEHOLDER*", recipe_html.as_str());
+
+    return serve_bytes(
+        request,
+        placeholder_page.as_bytes(),
+        "text/html; charset=utf-8",
+    );
+}
+
 fn search_page(request: Request) -> Result<()> {
     let mut placeholder_page: String = fs::read_to_string("src/search.html")
         .unwrap()
@@ -138,6 +184,9 @@ fn search_page(request: Request) -> Result<()> {
     for recipe in get_recipes() {
         recipe_html += recipe.render_link().as_str();
     }
+
+    placeholder_page =
+        placeholder_page.replace("{ingredients}", ingredients_select_html(None).as_str());
 
     placeholder_page = placeholder_page.replace("*PLACEHOLDER*", recipe_html.as_str());
 
@@ -183,11 +232,7 @@ fn add_missing_ingredients_to_db(list: Vec<String>) -> Vec<Ingredient> {
 
         let vars = repeat_vars(to_create.len());
 
-        let sql = format!(
-            // In practice this would probably be better as an `EXISTS` query.
-            "SELECT id, name FROM ingredients WHERE name IN ({})",
-            vars,
-        );
+        let sql = format!("SELECT id, name FROM ingredients WHERE name IN ({})", vars,);
         let mut stmt = con.prepare(&sql).unwrap();
         let existing_by_name: Vec<Ingredient> = stmt
             .query_map(rusqlite::params_from_iter(to_create.clone()), |row| {
@@ -225,7 +270,7 @@ fn add_missing_ingredients_to_db(list: Vec<String>) -> Vec<Ingredient> {
     }
 
     let vars = repeat_vars(strs.len());
-    let sql = format!("SELECT id, name FROM ingredients WHERE id IN ({})", vars,);
+    let sql = format!("SELECT id, name FROM ingredients WHERE id IN ({})", vars);
     let mut stmt = con.prepare(&sql).unwrap();
 
     let res = stmt
@@ -277,7 +322,10 @@ fn add_page_post(mut request: Request, recipe: Option<Recipe>) -> Result<()> {
         }
     }
 
-    let ingredients_list = add_missing_ingredients_to_db(ingredients);
+    let mut ingredients_list = vec![];
+    if !ingredients.is_empty() {
+        ingredients_list = add_missing_ingredients_to_db(ingredients);
+    }
     match recipe {
         None => {
             let created = Recipe::create(name.unwrap(), ingredients_list);
@@ -360,6 +408,34 @@ fn get_recipes() -> Vec<RecipeShort> {
     output
 }
 
+fn get_filtered_recipes(ingredients: Vec<String>) -> Vec<RecipeShort> {
+    let con = get_con();
+    let mut filter = "\"".to_owned();
+    filter += ingredients.join(", ").as_str();
+    filter += "\"";
+    let vars = repeat_vars(ingredients.len());
+
+    let sql = format!(
+        "SELECT DISTINCT r.id, r.name from recipes as r
+    join recipe_ingredients as ri on ri.recipe_id = r.id
+    where ri.ingredient_id in ({})",
+        vars,
+    );
+    let mut stmt = con.prepare(&sql).unwrap();
+
+    let recipes: Vec<RecipeShort> = stmt
+        .query_map(rusqlite::params_from_iter(ingredients), |row| {
+            Ok(RecipeShort {
+                id: row.get(0).unwrap(),
+                name: row.get(1).unwrap(),
+            })
+        })
+        .unwrap()
+        .map(|x| x.unwrap())
+        .collect();
+    recipes
+}
+
 impl RecipeShort {
     fn render_link(self) -> String {
         let mut html = "<div>".to_string();
@@ -387,16 +463,10 @@ fn get_all_ingredients() -> Vec<Ingredient> {
         .collect();
 }
 
-fn ingredients_select_html(recipe: Option<&Recipe>) -> String {
+fn ingredients_select_html_by_ing(ingredients: Option<Vec<String>>) -> String {
     let mut html = "".to_string();
-    let mut recipe_ingredients = vec![];
-    if let Some(recipe_object) = recipe {
-        for ing in recipe_object.ingredients.iter() {
-            recipe_ingredients.push(ing.id);
-        }
-    }
-    for i in get_all_ingredients() {
-        if recipe_ingredients.contains(&i.id) {
+    for i in get_all_ingredients().iter() {
+        if ingredients.is_some() && ingredients.clone().unwrap().contains(&i.id.to_string()) {
             html += format!(
                 "<option value=\"{}\" selected=\"selected\">{}</option>",
                 i.id, i.name
@@ -407,6 +477,19 @@ fn ingredients_select_html(recipe: Option<&Recipe>) -> String {
         }
     }
     html
+}
+
+fn ingredients_select_html(recipe: Option<&Recipe>) -> String {
+    match recipe {
+        None => ingredients_select_html_by_ing(None),
+        Some(rec) => {
+            let mut ings = vec![];
+            for i in rec.ingredients.iter() {
+                ings.push(i.id.to_string());
+            }
+            ingredients_select_html_by_ing(Some(ings))
+        }
+    }
 }
 
 impl Recipe {
