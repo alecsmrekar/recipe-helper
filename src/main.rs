@@ -11,10 +11,6 @@ fn get_con() -> Connection {
     Connection::open("main.db").expect("To open an SQLite connection")
 }
 
-fn all_ingredients() -> Vec<Ingredient> {
-    vec![]
-}
-
 fn serve() {
     let conn = get_con();
     conn.execute(
@@ -157,7 +153,7 @@ fn get_usize(text: String) -> Option<usize> {
     if id_cast.is_err() {
         return None;
     }
-    return Some(id_cast.unwrap());
+    Some(id_cast.unwrap())
 }
 
 fn repeat_vars(count: usize) -> String {
@@ -209,8 +205,6 @@ fn add_missing_ingredients_to_db(list: Vec<String>) -> Vec<Ingredient> {
         }
     }
 
-    let dddd = 2;
-
     for name in to_create.clone() {
         con.execute("INSERT INTO ingredients (name) VALUES (?1)", params![name])
             .expect("To add ingredient db");
@@ -220,7 +214,7 @@ fn add_missing_ingredients_to_db(list: Vec<String>) -> Vec<Ingredient> {
         let new_id = stmt
             .query_row(params![name], |row| {
                 let ii: usize = row.get(0).unwrap();
-                return Ok(ii);
+                Ok(ii)
             })
             .unwrap();
         existing_ids.push(new_id);
@@ -240,7 +234,7 @@ fn add_missing_ingredients_to_db(list: Vec<String>) -> Vec<Ingredient> {
                 id: row.get(0).unwrap(),
                 name: row.get(1).unwrap(),
             };
-            return Ok(tttt);
+            Ok(tttt)
         })
         .unwrap();
     let mut output = vec![];
@@ -253,7 +247,7 @@ fn add_missing_ingredients_to_db(list: Vec<String>) -> Vec<Ingredient> {
     println!("strs: {}", strs.join(","));
     println!("inputs len: {}", list.len());
     assert!(output.len() == list.len());
-    return output;
+    output
 }
 
 fn add_page_post(mut request: Request, recipe: Option<Recipe>) -> Result<()> {
@@ -283,24 +277,7 @@ fn add_page_post(mut request: Request, recipe: Option<Recipe>) -> Result<()> {
         }
     }
 
-    let a = 2;
-    //if !name.is_some() {
-    // return 500;
-    //}
-
-    let mut ingredients_list = add_missing_ingredients_to_db(ingredients);
-    /*if let Some(ingredients_object) = ingredients {
-        let decoded = urlencoding::decode(ingredients_object.as_str())
-            .expect("UTF-8")
-            .to_string();
-        ingredients_list = decoded
-            .lines()
-            .collect::<Vec<&str>>()
-            .iter()
-            .map(|x| x.to_string() as Ingredient)
-            .collect::<Vec<Ingredient>>();
-    }*/
-
+    let ingredients_list = add_missing_ingredients_to_db(ingredients);
     match recipe {
         None => {
             let created = Recipe::create(name.unwrap(), ingredients_list);
@@ -343,7 +320,7 @@ fn add_page(request: Request, recipe: Option<Recipe>) -> Result<()> {
 fn serve_file(request: Request) -> Result<()> {
     let filename = request
         .url()
-        .split("/")
+        .split('/')
         .last()
         .expect("Request URL to have a filename");
     let filepath: String = "src/".to_string() + filename;
@@ -413,8 +390,8 @@ fn get_all_ingredients() -> Vec<Ingredient> {
 fn ingredients_select_html(recipe: Option<&Recipe>) -> String {
     let mut html = "".to_string();
     let mut recipe_ingredients = vec![];
-    if recipe.is_some() {
-        for ing in recipe.unwrap().ingredients.iter() {
+    if let Some(recipe_object) = recipe {
+        for ing in recipe_object.ingredients.iter() {
             recipe_ingredients.push(ing.id);
         }
     }
@@ -433,15 +410,6 @@ fn ingredients_select_html(recipe: Option<&Recipe>) -> String {
 }
 
 impl Recipe {
-    fn render_link(self) -> String {
-        let mut html = "<div>".to_string();
-        html += self.name.as_str();
-        let link =
-            " (<a href=\"/recipe/".to_owned() + self.id.to_string().as_str() + "\">more</a>)";
-        html += link.as_str();
-        html += "</div>";
-        html.to_string()
-    }
     fn render(self) -> String {
         let mut html = "<h3>".to_string();
         html += self.name.as_str();
@@ -450,17 +418,12 @@ impl Recipe {
             .ingredients
             .iter()
             .by_ref()
-            .map(|i| {
-                return format!("<li>{}</li>", i.name.clone());
-            })
+            .map(|i| format!("<li>{}</li>", i.name.clone()))
             .collect::<Vec<String>>()
             .join("");
         html = html + "</ul>" + ingredients.as_str();
         html += "</div>";
         html.to_string()
-    }
-    fn ingredients_string(&self) -> String {
-        return "a".to_string();
     }
     fn create(name: String, ingredients: Vec<Ingredient>) -> Recipe {
         let con = get_con();
@@ -491,7 +454,6 @@ impl Recipe {
         }
     }
     fn save(&self) {
-        let name = self.name.as_str();
         let con = get_con();
         let id = self.id;
         let existing_ings = get_recipe_by_id(id)
@@ -500,8 +462,11 @@ impl Recipe {
             .iter()
             .map(|x| x.id)
             .collect::<Vec<usize>>();
+        let mut to_delete = existing_ings.clone();
         for i in self.ingredients.iter() {
             if existing_ings.contains(&i.id) {
+                let index = to_delete.iter().position(|x| *x == i.id).unwrap();
+                to_delete.remove(index);
                 continue;
             }
             con.execute(
@@ -513,6 +478,17 @@ impl Recipe {
                 },
             )
             .unwrap();
+        }
+        // Check if anything has to be deleted.
+        for ing_id in to_delete {
+            con.execute(
+                "DELETE FROM recipe_ingredients WHERE recipe_id = :recipe_id and ingredient_id = :ingredient_id",
+                named_params! {
+                    ":recipe_id": id,
+                    ":ingredient_id": ing_id,
+                },
+            )
+                .unwrap();
         }
     }
     fn delete(self) {
@@ -557,10 +533,8 @@ where r.id = ?1
         })
     });
 
-    for io in ing.unwrap() {
-        if let Ok(rr) = io {
-            recipe.ingredients.push(rr);
-        }
+    for io in ing.unwrap().flatten().collect::<Vec<Ingredient>>() {
+        recipe.ingredients.push(io);
     }
     Some(recipe)
 }
@@ -568,7 +542,6 @@ where r.id = ?1
 fn id_from_request(request: &Request) -> Option<usize> {
     let url = request.url();
     if let Some(id) = url.split('/').collect::<Vec<&str>>().last() {
-        let ss = id.to_string();
         return get_usize(id.to_string());
     }
     None
