@@ -1,3 +1,5 @@
+use base64::engine::general_purpose;
+use base64::Engine;
 use io::Result;
 use rusqlite::{named_params, params, Connection};
 use std::{fs, io};
@@ -53,6 +55,12 @@ fn serve() {
                 break;
             }
         };
+        // Check Http auth first.
+
+        if !check_auth(&request) {
+            server_non_auth_response(request).expect("To serve non auth response");
+            continue;
+        }
         if *request.method() == Method::Get && request.url().starts_with("/recipe/") {
             recipe_page_from_request(request).expect("That recipe page is ok");
             continue;
@@ -109,6 +117,37 @@ fn serve() {
         .unwrap();
         println!("received!");
     }
+}
+
+fn find_header(headers: &[Header], name: String) -> Option<Header> {
+    for header in headers {
+        if header.field.as_str() == name.as_str() {
+            return Some(header.clone());
+        }
+    }
+    None
+}
+
+fn check_auth(request: &Request) -> bool {
+    if let Some(header) = find_header(request.headers(), "Authorization".to_string()) {
+        let encoded: String = general_purpose::STANDARD.encode("123:123");
+        let full_string = "Basic ".to_string() + encoded.as_str();
+        if header.value == *full_string {
+            return true;
+        }
+    }
+    false
+}
+
+fn server_non_auth_response(request: Request) -> Result<()> {
+    let content_type_header =
+        Header::from_bytes("WWW-Authenticate", "Basic realm=\"Recipe Helper\"")
+            .expect("That we didn't put any garbage in the headers");
+    request.respond(
+        Response::from_data("non auth".as_bytes())
+            .with_header(content_type_header)
+            .with_status_code(401),
+    )
 }
 
 struct Ingredient {
@@ -539,8 +578,8 @@ impl Recipe {
     fn save(&self) {
         let con = get_con();
         let id = self.id;
-        let existing_ings = get_recipe_by_id(id)
-            .unwrap()
+        let existing_recipe = get_recipe_by_id(id).unwrap();
+        let existing_ings = existing_recipe
             .ingredients
             .iter()
             .map(|x| x.id)
@@ -572,6 +611,16 @@ impl Recipe {
                 },
             )
                 .unwrap();
+        }
+        if self.name != existing_recipe.name {
+            con.execute(
+                "UPDATE recipes SET name = :name WHERE id = :id",
+                named_params! {
+                    ":id": id,
+                    ":name": self.name,
+                },
+            )
+            .unwrap();
         }
     }
     fn delete(self) {
