@@ -27,17 +27,22 @@
 
 
 <form action="/add" method="POST">
-    <div>
+    <div style="margin-bottom: 10px;">
         <label for="name">Name</label>
         <input id="name" name="name" value="{name}" />
     </div>
 
-    <div>
+    <div style="margin-bottom: 10px;">
         <label>Ingredients
             <select class="form-control" multiple="multiple" id="ingredients" name="ingredients">
                 {ingredients}
             </select>
         </label>
+    </div>
+    <div>
+        <label for="description">Description
+        </label>
+        <textarea rows="5" id="description" name="description">{description}</textarea>
     </div>
 
     <div>

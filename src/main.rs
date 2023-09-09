@@ -159,6 +159,7 @@ struct Recipe {
     id: usize,
     name: String,
     ingredients: Vec<Ingredient>,
+    description: Option<String>,
 }
 
 fn landing_page(request: Request) -> Result<()> {
@@ -341,6 +342,7 @@ fn add_page_post(mut request: Request, recipe: Option<Recipe>) -> Result<()> {
     let params = content.split('&').collect::<Vec<&str>>();
     let mut name: Option<String> = None;
     let mut ingredients: Vec<String> = vec![];
+    let mut description = None;
     for param in params {
         // @todo refactor.
         let parts = param.split('=').collect::<Vec<&str>>();
@@ -357,6 +359,13 @@ fn add_page_post(mut request: Request, recipe: Option<Recipe>) -> Result<()> {
             "ingredients" => {
                 ingredients.push(value.to_string());
             }
+            "description" => {
+                let decoded_desc = urlencoding::decode(value)
+                    .expect("UTF-8")
+                    .to_string()
+                    .replace('+', " ");
+                description = Some(decoded_desc.to_string());
+            }
             _ => {}
         }
     }
@@ -367,13 +376,14 @@ fn add_page_post(mut request: Request, recipe: Option<Recipe>) -> Result<()> {
     }
     match recipe {
         None => {
-            let created = Recipe::create(name.unwrap(), ingredients_list);
+            let created = Recipe::create(name.unwrap(), ingredients_list, description);
             //recipe_page(created, request)
             return_redirect(format!("/recipe/{}", created.id), request)
         }
         Some(mut recipe_object) => {
             recipe_object.ingredients = ingredients_list;
             recipe_object.name = name.unwrap();
+            recipe_object.description = description;
             recipe_object.save();
             //recipe_page(recipe_object, request)
             return_redirect(format!("/recipe/{}", recipe_object.id), request)
@@ -386,16 +396,21 @@ fn add_page(request: Request, recipe: Option<Recipe>) -> Result<()> {
     let mut name_replace = "".to_string();
     let mut ingredients_replace = ingredients_select_html(None);
     let mut id = 0;
+    let mut description_replace = "".to_string();
     if let Some(recipe_onject) = recipe {
         id = recipe_onject.id;
         name_replace = recipe_onject.name.to_string();
         ingredients_replace = ingredients_select_html(Some(&recipe_onject));
         let action = "action=\"/edit/".to_string() + recipe_onject.id.to_string().as_str() + "\"";
         placeholder_page = placeholder_page.replace("action=\"/add\"", action.as_str());
+        if recipe_onject.description.is_some() {
+            description_replace = recipe_onject.description.unwrap();
+        }
     }
     placeholder_page = placeholder_page.replace("{id}", id.to_string().as_str());
     placeholder_page = placeholder_page.replace("{name}", name_replace.as_str());
     placeholder_page = placeholder_page.replace("{ingredients}", ingredients_replace.as_str());
+    placeholder_page = placeholder_page.replace("{description}", description_replace.as_str());
 
     serve_bytes(
         request,
@@ -535,7 +550,7 @@ impl Recipe {
     fn render(self) -> String {
         let mut html = "<h3>".to_string();
         html += self.name.as_str();
-        html += "</h3><ul>";
+        html += "</h3><div><ul>";
         let ingredients = self
             .ingredients
             .iter()
@@ -543,14 +558,21 @@ impl Recipe {
             .map(|i| format!("<li>{}</li>", i.name.clone()))
             .collect::<Vec<String>>()
             .join("");
-        html = html + "</ul>" + ingredients.as_str();
-        html += "</div>";
+        html = html + ingredients.as_str() + "</ul></div>";
+        if self.description.is_some() {
+            html += "<div><b>Description</b><div style=\"white-space: pre-wrap;\">";
+            html = html + self.description.unwrap().as_str() + "</div></div>";
+        }
         html.to_string()
     }
-    fn create(name: String, ingredients: Vec<Ingredient>) -> Recipe {
+    fn create(name: String, ingredients: Vec<Ingredient>, description: Option<String>) -> Recipe {
         let con = get_con();
-        con.execute("INSERT INTO recipes (name) VALUES (?1)", params![name])
-            .expect("DUPLICATE RECIPE NAME");
+        let description_str = description.clone().unwrap_or("".to_string());
+        con.execute(
+            "INSERT INTO recipes (name, description) VALUES (?1, ?2)",
+            params![name, description_str],
+        )
+        .expect("DUPLICATE RECIPE NAME");
         let res: u32 = con
             .query_row("SELECT id FROM recipes WHERE name = (?1)", [&name], |row| {
                 row.get(0)
@@ -573,11 +595,13 @@ impl Recipe {
             id: res as usize,
             name,
             ingredients,
+            description,
         }
     }
     fn save(&self) {
         let con = get_con();
         let id = self.id;
+        let description = self.description.clone().unwrap_or("".to_string());
         let existing_recipe = get_recipe_by_id(id).unwrap();
         let existing_ings = existing_recipe
             .ingredients
@@ -612,16 +636,15 @@ impl Recipe {
             )
                 .unwrap();
         }
-        if self.name != existing_recipe.name {
-            con.execute(
-                "UPDATE recipes SET name = :name WHERE id = :id",
-                named_params! {
-                    ":id": id,
-                    ":name": self.name,
-                },
-            )
-            .unwrap();
-        }
+        con.execute(
+            "UPDATE recipes SET name = :name, description = :description WHERE id = :id",
+            named_params! {
+                ":id": id,
+                ":description": description,
+                ":name": self.name,
+            },
+        )
+        .unwrap();
     }
     fn delete(self) {
         let con = get_con();
@@ -635,18 +658,24 @@ fn get_recipe_by_id(id: usize) -> Option<Recipe> {
     let conn = get_con();
     let mut stmt = conn
         .prepare(
-            "SELECT r.id, r.name from recipes as r
+            "SELECT r.id, r.name, r.description from recipes as r
 where r.id = ?1
         ;",
         )
         .unwrap();
 
     let tt = stmt.query_row(params![id], |row| {
+        let mut desc: Option<String> = None;
+        if let Ok(text) = row.get(2) {
+            desc = Some(text);
+        }
         let recipe = Recipe {
             id: row.get(0).unwrap(),
             name: row.get(1).unwrap(),
             ingredients: vec![],
+            description: desc,
         };
+        // @todo
         Ok(recipe)
     });
 
