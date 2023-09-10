@@ -2,7 +2,7 @@ use base64::engine::general_purpose;
 use base64::Engine;
 use io::Result;
 use rusqlite::{named_params, params, Connection};
-use std::{fs, io};
+use std::{env, fs, io};
 use tiny_http::{Header, Method, Request, Response, Server};
 
 fn main() {
@@ -45,8 +45,11 @@ fn serve() {
     .expect("To create a table");
 
     // https://stackoverflow.com/a/8003151.
-    let server = Server::http("127.0.0.1:9898").unwrap();
-    println!("http://127.0.0.1:9898");
+    let args: Vec<String> = env::args().collect();
+    let dp = "9898".to_string();
+    let port = args.get(1).unwrap_or(&dp).as_str();
+    let server = Server::http("127.0.0.1:".to_string() + port).unwrap();
+    println!("http://127.0.0.1:{}", port);
     loop {
         let request = match server.recv() {
             Ok(rq) => rq,
@@ -130,7 +133,10 @@ fn find_header(headers: &[Header], name: String) -> Option<Header> {
 
 fn check_auth(request: &Request) -> bool {
     if let Some(header) = find_header(request.headers(), "Authorization".to_string()) {
-        let encoded: String = general_purpose::STANDARD.encode("123:123");
+        let dp = "123:123".to_string();
+        let args: Vec<String> = env::args().collect();
+        let auth = args.get(2).unwrap_or(&dp).as_str();
+        let encoded: String = general_purpose::STANDARD.encode(auth);
         let full_string = "Basic ".to_string() + encoded.as_str();
         if header.value == *full_string {
             return true;
