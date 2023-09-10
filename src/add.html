@@ -1,11 +1,9 @@
 <html>
 <head>
-    <head><meta name="viewport" content="width=500, initial-scale=1" /></head>
-
+    <meta name="viewport" content="width=500, initial-scale=1" />
     <script src="/src/jquery-3.7.0.min.js"></script>
     <script src="/src/select2.min.js"></script>
     <link href="/src/select2.min.css" rel="stylesheet" />
-
     <script type="application/javascript">
         $(document).ready(function() {
             $("#ingredients").select2({
@@ -23,17 +21,13 @@
 <body>
 <h1>Recipe Helper</h1>
 
-<!-- https://stackoverflow.com/questions/11352207/jquery-chosen-plugin-add-options-dynamically -->
-
-
-
 <form action="/add" method="POST">
-    <div style="margin-bottom: 10px;">
+    <div>
         <label for="name">Name</label>
         <input id="name" name="name" value="{name}" />
     </div>
 
-    <div style="margin-bottom: 10px;">
+    <div>
         <label>Ingredients
             <select class="form-control" multiple="multiple" id="ingredients" name="ingredients">
                 {ingredients}
@@ -49,7 +43,6 @@
     <div>
         <button type="submit">Save</button>
     </div>
-
 </form>
 </body>
 </html>
