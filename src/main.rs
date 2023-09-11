@@ -554,9 +554,11 @@ fn ingredients_select_html(recipe: Option<&Recipe>) -> String {
 
 impl Recipe {
     fn render(self) -> String {
-        let mut html = "<h3>".to_string();
-        html += self.name.as_str();
-        html += "</h3><div><ul>";
+        let mut placeholder: String = fs::read_to_string("src/recipe-body.html")
+            .unwrap()
+            .parse()
+            .unwrap();
+        placeholder = placeholder.replace("{name}", self.name.as_str());
         let ingredients = self
             .ingredients
             .iter()
@@ -564,12 +566,13 @@ impl Recipe {
             .map(|i| format!("<li>{}</li>", i.name.clone()))
             .collect::<Vec<String>>()
             .join("");
-        html = html + ingredients.as_str() + "</ul></div>";
+        placeholder = placeholder.replace("{ingredients}", ingredients.as_str());
+        let mut description_text = "".to_string();
         if self.description.is_some() {
-            html += "<div><b>Description</b><div style=\"white-space: pre-wrap;\">";
-            html = html + self.description.unwrap().as_str() + "</div></div>";
+            description_text = self.description.unwrap();
         }
-        html.to_string()
+        placeholder = placeholder.replace("{description}", description_text.as_str());
+        placeholder
     }
     fn create(name: String, ingredients: Vec<Ingredient>, description: Option<String>) -> Recipe {
         let con = get_con();
