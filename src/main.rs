@@ -106,7 +106,7 @@ fn serve() {
             continue;
         }
         match (request.method(), request.url()) {
-            (Method::Get, "/") => landing_page(request),
+            (Method::Get, "/") => search_page(request),
             (Method::Get, "/search") => search_page(request),
             (Method::Post, "/search") => search_page_post(request),
             (Method::Get, "/add") => add_page(request, None),
@@ -167,15 +167,6 @@ struct Recipe {
     ingredients: Vec<Ingredient>,
     description: Option<String>,
 }
-
-fn landing_page(request: Request) -> Result<()> {
-    serve_bytes(
-        request,
-        include_bytes!("landing.html"),
-        "text/html; charset=utf-8",
-    )
-}
-
 fn search_page_post(mut request: Request) -> Result<()> {
     let mut content = String::new();
     request.as_reader().read_to_string(&mut content).unwrap();
@@ -195,10 +186,7 @@ fn search_page_post(mut request: Request) -> Result<()> {
         return Ok(());
     }
 
-    let mut placeholder_page: String = fs::read_to_string("src/search.html")
-        .unwrap()
-        .parse()
-        .unwrap();
+    let mut placeholder_page: String = load_page_html("src/search.html");
     let mut recipe_html = String::new();
 
     let recipes = get_filtered_recipes(ingredients.clone());
@@ -221,11 +209,16 @@ fn search_page_post(mut request: Request) -> Result<()> {
     );
 }
 
+fn load_page_html(filename: &str) -> String {
+    let filepath: String = filename.to_string();
+    let file: String = fs::read_to_string(filepath.as_str()).unwrap();
+    let mut page: String = fs::read_to_string("src/page.html").unwrap();
+    page = page.replace("{body}", file.as_str());
+    page
+}
+
 fn search_page(request: Request) -> Result<()> {
-    let mut placeholder_page: String = fs::read_to_string("src/search.html")
-        .unwrap()
-        .parse()
-        .unwrap();
+    let mut placeholder_page: String = load_page_html("src/search.html");
     let mut recipe_html = String::new();
     for recipe in get_recipes() {
         recipe_html += recipe.render_link().as_str();
@@ -337,7 +330,7 @@ fn add_missing_ingredients_to_db(list: Vec<String>) -> Vec<Ingredient> {
     println!("strs len: {}", strs.len());
     println!("strs: {}", strs.join(","));
     println!("inputs len: {}", list.len());
-    assert!(output.len() == list.len());
+    assert_eq!(output.len(), list.len());
     output
 }
 
@@ -398,7 +391,7 @@ fn add_page_post(mut request: Request, recipe: Option<Recipe>) -> Result<()> {
 }
 
 fn add_page(request: Request, recipe: Option<Recipe>) -> Result<()> {
-    let mut placeholder_page: String = fs::read_to_string("src/add.html").unwrap().parse().unwrap();
+    let mut placeholder_page: String = load_page_html("src/add.html");
     let mut name_replace = "".to_string();
     let mut ingredients_replace = ingredients_select_html(None);
     let mut id = 0;
@@ -718,10 +711,7 @@ fn id_from_request(request: &Request) -> Option<usize> {
 }
 
 fn recipe_page(recipe: Recipe, request: Request) -> Result<()> {
-    let mut placeholder_page: String = fs::read_to_string("src/recipe.html")
-        .unwrap()
-        .parse()
-        .unwrap();
+    let mut placeholder_page: String = load_page_html("src/recipe.html");
     placeholder_page = placeholder_page.replace("{id}", recipe.id.to_string().as_str());
     placeholder_page = placeholder_page.replace("*PLACEHOLDER*", recipe.render().as_str());
     return serve_bytes(
