@@ -441,6 +441,21 @@ struct RecipeShort {
     name: String,
 }
 
+struct RecipeResult {
+    recipe: RecipeShort,
+    match_percentage: u8,
+}
+
+impl RecipeResult {
+    fn render_link(self) -> String {
+        let mut link = self.recipe.render_link();
+        let perc = format!(" ({}% match)", self.match_percentage);
+        link = link.replace("</div>", perc.as_str());
+        link += "</div>";
+        link
+    }
+}
+
 fn get_recipes() -> Vec<RecipeShort> {
     let conn = get_con();
     let mut stmt = conn.prepare("SELECT id, name from recipes;").unwrap();
@@ -461,7 +476,7 @@ fn get_recipes() -> Vec<RecipeShort> {
     output
 }
 
-fn get_filtered_recipes(ingredients: Vec<String>) -> Vec<RecipeShort> {
+fn get_filtered_recipes(ingredients: Vec<String>) -> Vec<RecipeResult> {
     let con = get_con();
     let mut filter = "\"".to_owned();
     filter += ingredients.join(", ").as_str();
@@ -476,16 +491,33 @@ fn get_filtered_recipes(ingredients: Vec<String>) -> Vec<RecipeShort> {
     );
     let mut stmt = con.prepare(&sql).unwrap();
 
-    let recipes: Vec<RecipeShort> = stmt
-        .query_map(rusqlite::params_from_iter(ingredients), |row| {
-            Ok(RecipeShort {
+    let mut recipes: Vec<RecipeResult> = stmt
+        .query_map(rusqlite::params_from_iter(ingredients.clone()), |row| {
+            let rs = RecipeShort {
                 id: row.get(0).unwrap(),
                 name: row.get(1).unwrap(),
+            };
+            let full = get_recipe_by_id(rs.id).unwrap();
+            let all_ing_cnt = full.ingredients.len();
+            let mut match_cnt = 0;
+            for f_ingredient in full.ingredients {
+                if ingredients.contains(&f_ingredient.id.to_string()) {
+                    match_cnt += 1;
+                }
+            }
+
+            let perc: f32 = (match_cnt as f32 / all_ing_cnt as f32) * 100.0;
+            let perc: u8 = perc.round() as u8;
+
+            Ok(RecipeResult {
+                recipe: rs,
+                match_percentage: perc,
             })
         })
         .unwrap()
         .map(|x| x.unwrap())
         .collect();
+    recipes.sort_by(|a, b| b.match_percentage.partial_cmp(&a.match_percentage).unwrap());
     recipes
 }
 
