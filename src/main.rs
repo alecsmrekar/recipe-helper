@@ -1,6 +1,7 @@
 use base64::engine::general_purpose;
 use base64::Engine;
 use io::Result;
+use regex::Regex;
 use rusqlite::{named_params, params, Connection};
 use std::{env, fs, io};
 use tiny_http::{Header, Method, Request, Response, Server};
@@ -595,6 +596,15 @@ impl Recipe {
         let mut description_text = "".to_string();
         if self.description.is_some() {
             description_text = self.description.unwrap();
+            // Check for links.
+            let re = Regex::new(r#"(?<link>(http.*?\s)|(http.*?$))"#).unwrap();
+            description_text = re
+                .replace_all(
+                    description_text.as_str(),
+                    "<a target=\"_blank\" href=\"$link\">$link</a>",
+                )
+                .to_string();
+            description_text = description_text.replace(" </a>", "</a> ");
         }
         placeholder = placeholder.replace("{description}", description_text.as_str());
         placeholder
