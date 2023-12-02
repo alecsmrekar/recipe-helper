@@ -20,7 +20,7 @@ fn serve() {
         "create table if not exists recipes (
              id integer primary key,
              name text not null unique,
-             ingredients text
+             description text
          )",
         (),
     )
@@ -50,7 +50,7 @@ fn serve() {
     let dp = "9898".to_string();
     let port = args.get(1).unwrap_or(&dp).as_str();
     let server = Server::http("127.0.0.1:".to_string() + port).unwrap();
-    println!("http://127.0.0.1:{}", port);
+    println!("http://123:123@127.0.0.1:{}", port);
     loop {
         let request = match server.recv() {
             Ok(rq) => rq,
@@ -719,7 +719,6 @@ where r.id = ?1
             ingredients: vec![],
             description: desc,
         };
-        // @todo
         Ok(recipe)
     });
 
