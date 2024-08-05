@@ -645,7 +645,10 @@ impl Recipe {
     fn save(&self) {
         let con = get_con();
         let id = self.id;
-        let description = self.description.clone().unwrap_or("".to_string());
+        let description = match &self.description {
+            Option::Some(text) => text.as_str(),
+            Option::None => "",
+        };
         let existing_recipe = get_recipe_by_id(id).unwrap();
         let existing_ings = existing_recipe
             .ingredients
