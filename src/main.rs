@@ -251,7 +251,7 @@ fn repeat_vars(count: usize) -> String {
 fn add_missing_ingredients_to_db(list: Vec<String>) -> Vec<Ingredient> {
     let mut to_create = vec![];
     let mut existing_ids = vec![];
-    for item in list.clone() {
+    for item in list {
         if let Some(number) = get_usize(item.clone()) {
             existing_ids.push(number);
         } else {
@@ -321,12 +321,6 @@ fn add_missing_ingredients_to_db(list: Vec<String>) -> Vec<Ingredient> {
     for ii in res {
         output.push(ii.unwrap());
     }
-    println!("output len: {}", output.len());
-    println!("existing len: {}", existing_ids.len());
-    println!("strs len: {}", strs.len());
-    println!("strs: {}", strs.join(","));
-    println!("inputs len: {}", list.len());
-    assert_eq!(output.len(), list.len());
     output
 }
 
