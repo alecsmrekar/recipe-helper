@@ -232,7 +232,7 @@ fn search_page(request: Request) -> Result<()> {
     );
 }
 
-fn get_usize(text: String) -> Option<usize> {
+fn get_usize(text: &str) -> Option<usize> {
     let id_cast = text.parse::<usize>();
     if id_cast.is_err() {
         return None;
@@ -252,7 +252,7 @@ fn add_missing_ingredients_to_db(list: Vec<String>) -> Vec<Ingredient> {
     let mut to_create = vec![];
     let mut existing_ids = vec![];
     for item in list {
-        if let Some(number) = get_usize(item.clone()) {
+        if let Some(number) = get_usize(&item) {
             existing_ids.push(number);
         } else {
             to_create.push(item.clone());
@@ -738,7 +738,7 @@ where r.id = ?1
 fn id_from_request(request: &Request) -> Option<usize> {
     let url = request.url();
     if let Some(id) = url.split('/').collect::<Vec<&str>>().last() {
-        return get_usize(id.to_string());
+        return get_usize(id);
     }
     None
 }
