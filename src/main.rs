@@ -124,7 +124,9 @@ fn serve() {
 }
 
 fn find_header(headers: &[Header], name: String) -> Option<&Header> {
-  headers.iter().find(|&header| header.field.as_str() == name.as_str())
+    headers
+        .iter()
+        .find(|&header| header.field.as_str() == name.as_str())
 }
 
 fn check_auth(request: &Request) -> bool {
@@ -155,6 +157,18 @@ fn server_non_auth_response(request: Request) -> Result<()> {
 struct Ingredient {
     id: usize,
     name: String,
+}
+
+impl Ingredient {
+    fn get_option(&self, selected: bool) -> String {
+        match selected {
+            true => format!(
+                "<option value=\"{}\" selected=\"selected\">{}</option>",
+                &self.id, &self.name
+            ),
+            false => format!("<option value=\"{}\">{}</option>", &self.id, &self.name),
+        }
+    }
 }
 
 struct Recipe {
@@ -255,7 +269,7 @@ fn add_missing_ingredients_to_db(list: Vec<String>) -> Vec<Ingredient> {
         if let Some(number) = get_usize(&item) {
             existing_ids.push(number);
         } else {
-            to_create.push(item.clone());
+            to_create.push(item);
         }
     }
 
@@ -538,17 +552,23 @@ fn get_all_ingredients() -> Vec<Ingredient> {
         .collect();
 }
 
-fn ingredients_select_html_by_ing(ingredients: Option<Vec<String>>) -> String {
+fn ingredients_select_html_by_ing(ingredients_list: Option<Vec<String>>) -> String {
     let mut html = "".to_string();
-    for i in get_all_ingredients().iter() {
-        if ingredients.is_some() && ingredients.clone().unwrap().contains(&i.id.to_string()) {
-            html += format!(
-                "<option value=\"{}\" selected=\"selected\">{}</option>",
-                i.id, i.name
-            )
-            .as_str();
-        } else {
-            html += format!("<option value=\"{}\">{}</option>", i.id, i.name).as_str();
+
+    match ingredients_list {
+        Option::Some(ingredients) => {
+            for i in get_all_ingredients().iter() {
+                if ingredients.contains(&i.id.to_string()) {
+                    html += i.get_option(true).as_str();
+                } else {
+                    html += i.get_option(false).as_str();
+                }
+            }
+        }
+        Option::None => {
+            for i in get_all_ingredients().iter() {
+                html += i.get_option(false).as_str();
+            }
         }
     }
     html
