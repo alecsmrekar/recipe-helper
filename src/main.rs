@@ -185,7 +185,7 @@ fn search_page_post(mut request: Request) -> Result<()> {
     let mut placeholder_page: String = load_page_html("src/search.html");
     let mut recipe_html = String::new();
 
-    let recipes = get_filtered_recipes(ingredients.clone());
+    let recipes = get_filtered_recipes(&ingredients);
 
     for recipe in recipes {
         recipe_html += recipe.render_link().as_str();
@@ -466,7 +466,7 @@ fn get_recipes() -> Vec<RecipeShort> {
     output
 }
 
-fn get_filtered_recipes(ingredients: Vec<String>) -> Vec<RecipeResult> {
+fn get_filtered_recipes(ingredients: &[String]) -> Vec<RecipeResult> {
     let con = get_con();
     let mut filter = "\"".to_owned();
     filter += ingredients.join(", ").as_str();
@@ -482,7 +482,7 @@ fn get_filtered_recipes(ingredients: Vec<String>) -> Vec<RecipeResult> {
     let mut stmt = con.prepare(&sql).unwrap();
 
     let mut recipes: Vec<RecipeResult> = stmt
-        .query_map(rusqlite::params_from_iter(ingredients.clone()), |row| {
+        .query_map(rusqlite::params_from_iter(ingredients), |row| {
             let rs = RecipeShort {
                 id: row.get(0).unwrap(),
                 name: row.get(1).unwrap(),
