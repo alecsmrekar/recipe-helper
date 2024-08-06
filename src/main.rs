@@ -123,13 +123,8 @@ fn serve() {
     }
 }
 
-fn find_header(headers: &[Header], name: String) -> Option<Header> {
-    for header in headers {
-        if header.field.as_str() == name.as_str() {
-            return Some(header.clone());
-        }
-    }
-    None
+fn find_header(headers: &[Header], name: String) -> Option<&Header> {
+  headers.iter().find(|&header| header.field.as_str() == name.as_str())
 }
 
 fn check_auth(request: &Request) -> bool {
@@ -290,7 +285,7 @@ fn add_missing_ingredients_to_db(list: Vec<String>) -> Vec<Ingredient> {
         }
     }
 
-    for name in to_create.clone() {
+    for name in to_create {
         con.execute("INSERT INTO ingredients (name) VALUES (?1)", params![name])
             .expect("To add ingredient db");
         let mut stmt = con
