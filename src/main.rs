@@ -119,7 +119,6 @@ fn serve() {
             ),
         }
         .unwrap();
-        println!("received!");
     }
 }
 
