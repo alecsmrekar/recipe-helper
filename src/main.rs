@@ -781,8 +781,11 @@ fn recipe_page_from_request(request: Request) -> Result<()> {
         return_redirect("/".to_string(), request).unwrap();
         return Ok(());
     }
-    let recipe = get_recipe_by_id(id.unwrap()).unwrap();
-    recipe_page(recipe, request)
+
+    match get_recipe_by_id(id.unwrap()) {
+        Option::Some(recipe) => recipe_page(recipe, request),
+        Option::None => return_redirect("/".to_string(), request),
+    }
 }
 
 fn return_redirect(destination: String, request: Request) -> Result<()> {

@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <title>Recipe Helper</title>
 
-    <meta name="viewport" content="width=500, initial-scale=1" />
+    <meta name="viewport" content="initial-scale=1" />
     <script src="/src/jquery-3.7.0.min.js"></script>
     <script src="/src/select2.min.js"></script>
     <link href="/src/select2.min.css" rel="stylesheet" />
@@ -21,10 +21,39 @@
         .select2-container {
             min-width: 200px;
         }
+        .search-results {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .button {
+            background: red;
+            padding: 7px;
+            margin-right: 5px;
+            text-decoration: none;
+            color: black;
+        }
+        .button-blue {
+            background: blue;
+            color: white;
+        }
+        form div {
+            margin-bottom: 10px;
+        }
+        @media screen and (max-width: 600px) {
+          form input {
+
+          }
+        }
+        html {
+            background-color: #c2c2c2;
+        }
     </style>
 </head>
-<body>
-    <h1>Recipe Helper</h1>
+<body style="padding: 10px;">
+    <a href="/">
+        <h1 style="margin-left: auto;margin-right: auto;width: fit-content;">Recipe Helper</h1>
+    </a>
     <div>{body}</div>
 </body>
 </html>
