@@ -380,7 +380,6 @@ fn add_page_post(mut request: Request, recipe: Option<Recipe>) -> Result<()> {
     match recipe {
         None => {
             let created = Recipe::create(name.unwrap(), ingredients_list, description);
-            //recipe_page(created, request)
             return_redirect(format!("/recipe/{}", created.id), request)
         }
         Some(mut recipe_object) => {
@@ -620,7 +619,10 @@ impl Recipe {
     }
     fn create(name: String, ingredients: Vec<Ingredient>, description: Option<String>) -> Recipe {
         let con = get_con();
-        let description_str = description.clone().unwrap_or("".to_string());
+        let description_str = match description {
+            Option::Some(ref d) => d.as_str(),
+            Option::None => "",
+        };
         con.execute(
             "INSERT INTO recipes (name, description) VALUES (?1, ?2)",
             params![name, description_str],
