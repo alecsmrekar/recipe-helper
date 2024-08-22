@@ -70,24 +70,26 @@ fn serve() {
             continue;
         }
         if *request.method() == Method::Get && request.url().starts_with("/delete/") {
-            let id = id_from_request(&request);
-            if id.is_none() {
-                return_redirect("/".to_string(), request).unwrap();
-                continue;
+            match id_from_request(&request) {
+                Some(id) => {
+                    if let Some(recipe) = get_recipe_by_id(id) {
+                        recipe.delete();
+                    }
+                    return_redirect("/search".to_string(), request).unwrap();
+                }
+                None => return_redirect("/".to_string(), request).unwrap(),
             }
-            let recipe = get_recipe_by_id(id.unwrap());
-            recipe.unwrap().delete();
-            return_redirect("/search".to_string(), request).unwrap();
             continue;
         }
         if *request.method() == Method::Get && request.url().starts_with("/edit/") {
-            let id = id_from_request(&request);
-            if id.is_none() {
-                return_redirect("/".to_string(), request).unwrap();
-                continue;
+            match id_from_request(&request) {
+                Some(id) => {
+                    if let Some(recipe) = get_recipe_by_id(id) {
+                        add_page(request, Some(recipe)).unwrap();
+                    }
+                }
+                None => return_redirect("/".to_string(), request).unwrap(),
             }
-            let recipe = get_recipe_by_id(id.unwrap());
-            add_page(request, recipe).expect("Add page");
             continue;
         }
         if *request.method() == Method::Post && request.url().starts_with("/edit/") {
