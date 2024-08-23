@@ -60,52 +60,42 @@ fn serve() {
             }
         };
         // Check Http auth first.
-
         if !check_auth(&request) {
             server_non_auth_response(request).expect("To serve non auth response");
             continue;
         }
         if *request.method() == Method::Get && request.url().starts_with("/recipe/") {
-            recipe_page_from_request(request).expect("That recipe page is ok");
-            continue;
-        }
-        if *request.method() == Method::Get && request.url().starts_with("/delete/") {
-            match id_from_request(&request) {
-                Some(id) => {
-                    if let Some(recipe) = get_recipe_by_id(id) {
-                        recipe.delete();
-                    }
-                    return_redirect("/search".to_string(), request).unwrap();
-                }
+            match recipe_from_request(&request) {
+                Some(recipe) => recipe_page(recipe, request).unwrap(),
                 None => return_redirect("/".to_string(), request).unwrap(),
             }
             continue;
         }
+        if *request.method() == Method::Get && request.url().starts_with("/delete/") {
+            if let Some(recipe) = recipe_from_request(&request) {
+                recipe.delete();
+            }
+            return_redirect("/".to_string(), request).unwrap();
+            continue;
+        }
         if *request.method() == Method::Get && request.url().starts_with("/edit/") {
-            match id_from_request(&request) {
-                Some(id) => {
-                    if let Some(recipe) = get_recipe_by_id(id) {
-                        add_page(request, Some(recipe)).unwrap();
-                    }
-                }
+            match recipe_from_request(&request) {
+                Some(recipe) => add_page(request, Some(recipe)).unwrap(),
                 None => return_redirect("/".to_string(), request).unwrap(),
             }
             continue;
         }
         if *request.method() == Method::Post && request.url().starts_with("/edit/") {
-            let id = id_from_request(&request);
-            if id.is_none() {
-                return_redirect("/".to_string(), request).unwrap();
-                continue;
+            match recipe_from_request(&request) {
+                Some(recipe) => add_page_post(request, Some(recipe)).unwrap(),
+                None => return_redirect("/".to_string(), request).unwrap(),
             }
-            let recipe = get_recipe_by_id(id.unwrap());
-            add_page_post(request, recipe).expect("Add page POST");
             continue;
         }
         if *request.method() == Method::Get
             && (request.url().ends_with(".js") || request.url().ends_with(".css"))
         {
-            serve_file(request).expect("Serve file");
+            serve_file(request).unwrap_or(());
             continue;
         }
         match (request.method(), request.url()) {
@@ -429,8 +419,10 @@ fn serve_file(request: Request) -> Result<()> {
         .last()
         .expect("Request URL to have a filename");
     let filepath: String = "src/".to_string() + filename;
-    let bytes = &fs::read(filepath.as_str()).unwrap();
-    serve_bytes(request, bytes, "charset=utf-8")
+    match &fs::read(filepath.as_str()) {
+        Ok(bytes) => serve_bytes(request, bytes, "charset=utf-8"),
+        _ => Result::Err(std::io::Error::last_os_error()),
+    }
 }
 
 // Returns an array of bytes.
@@ -766,6 +758,13 @@ fn id_from_request(request: &Request) -> Option<usize> {
     None
 }
 
+fn recipe_from_request(request: &Request) -> Option<Recipe> {
+    match id_from_request(request) {
+        None => None,
+        Some(id) => get_recipe_by_id(id),
+    }
+}
+
 fn recipe_page(recipe: Recipe, request: Request) -> Result<()> {
     let mut placeholder_page: String = load_page_html("src/recipe.html");
     placeholder_page = placeholder_page.replace("{id}", recipe.id.to_string().as_str());
@@ -775,19 +774,6 @@ fn recipe_page(recipe: Recipe, request: Request) -> Result<()> {
         placeholder_page.as_bytes(),
         "text/html; charset=utf-8",
     );
-}
-
-fn recipe_page_from_request(request: Request) -> Result<()> {
-    let id = id_from_request(&request);
-    if id.is_none() {
-        return_redirect("/".to_string(), request).unwrap();
-        return Ok(());
-    }
-
-    match get_recipe_by_id(id.unwrap()) {
-        Option::Some(recipe) => recipe_page(recipe, request),
-        Option::None => return_redirect("/".to_string(), request),
-    }
 }
 
 fn return_redirect(destination: String, request: Request) -> Result<()> {
