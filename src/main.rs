@@ -3,6 +3,7 @@ use base64::Engine;
 use io::Result;
 use regex::Regex;
 use rusqlite::{named_params, params, Connection};
+use std::collections::HashMap;
 use std::{env, fs, io};
 use tiny_http::{Header, Method, Request, Response, Server};
 
@@ -254,6 +255,9 @@ fn repeat_vars(count: usize) -> String {
 }
 
 fn add_missing_ingredients_to_db(list: Vec<String>) -> Vec<Ingredient> {
+    if list.is_empty() {
+        return vec![];
+    }
     let mut to_create = vec![];
     let mut existing_ids = vec![];
     for item in list {
@@ -315,11 +319,10 @@ fn add_missing_ingredients_to_db(list: Vec<String>) -> Vec<Ingredient> {
 
     let res = stmt
         .query_map(rusqlite::params_from_iter(strs.clone()), |row| {
-            let tttt = Ingredient {
+            Ok(Ingredient {
                 id: row.get(0).unwrap(),
                 name: row.get(1).unwrap(),
-            };
-            Ok(tttt)
+            })
         })
         .unwrap();
     let mut output = vec![];
@@ -332,53 +335,59 @@ fn add_missing_ingredients_to_db(list: Vec<String>) -> Vec<Ingredient> {
 fn add_page_post(mut request: Request, recipe: Option<Recipe>) -> Result<()> {
     let mut content = String::new();
     request.as_reader().read_to_string(&mut content).unwrap();
-
     let params = content.split('&').collect::<Vec<&str>>();
-    let mut name: Option<String> = None;
-    let mut ingredients: Vec<String> = vec![];
-    let mut description = None;
+    let mut param_map: HashMap<String, String> = HashMap::new();
+    println!("{:?}", params);
     for param in params {
-        // @todo refactor.
         let parts = param.split('=').collect::<Vec<&str>>();
-        let id = parts.first().unwrap();
-        let value = parts.get(1).unwrap();
-        match *id {
-            "name" => {
-                let decoded_name = urlencoding::decode(value)
-                    .expect("UTF-8")
-                    .to_string()
-                    .replace('+', " ");
-                name = Some(decoded_name);
+        let Some(id) = parts.first() else {
+            continue;
+        };
+        let id = id.to_string();
+        let Some(value) = parts.get(1) else {
+            continue;
+        };
+        let decoded_value = urlencoding::decode(value)
+            .expect("UTF-8")
+            .to_string()
+            .replace('+', " ");
+        match param_map.get_mut(&id) {
+            Some(existing) => {
+                existing.push_str(format!("|{}", decoded_value).as_str());
             }
-            "ingredients" => {
-                ingredients.push(value.to_string());
+            None => {
+                param_map.insert(id, decoded_value.to_string());
             }
-            "description" => {
-                let decoded_desc = urlencoding::decode(value)
-                    .expect("UTF-8")
-                    .to_string()
-                    .replace('+', " ");
-                description = Some(decoded_desc.to_string());
-            }
-            _ => {}
-        }
+        };
     }
 
-    let mut ingredients_list = vec![];
-    if !ingredients.is_empty() {
-        ingredients_list = add_missing_ingredients_to_db(ingredients);
-    }
+    let description = param_map.get("description").cloned();
+    let Some(name) = param_map.get("name") else {
+        return return_redirect("/error".to_string(), request);
+    };
+    let name = urlencoding::decode(name)
+        .expect("UTF-8")
+        .to_string()
+        .replace('+', " ");
+    let default = "".to_owned();
+    let ingredients_string = param_map.get("ingredients").unwrap_or(&default);
+    let ingredients = ingredients_string
+        .split('|')
+        .collect::<Vec<&str>>()
+        .iter()
+        .map(|&s| s.to_string())
+        .collect();
+    let ingredients_list = add_missing_ingredients_to_db(ingredients);
     match recipe {
         None => {
-            let created = Recipe::create(name.unwrap(), ingredients_list, description);
+            let created = Recipe::create(name, ingredients_list, description);
             return_redirect(format!("/recipe/{}", created.id), request)
         }
         Some(mut recipe_object) => {
             recipe_object.ingredients = ingredients_list;
-            recipe_object.name = name.unwrap();
+            recipe_object.name = name;
             recipe_object.description = description;
             recipe_object.save();
-            //recipe_page(recipe_object, request)
             return_redirect(format!("/recipe/{}", recipe_object.id), request)
         }
     }
